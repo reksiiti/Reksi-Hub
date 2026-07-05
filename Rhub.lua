@@ -240,3 +240,82 @@ _G.MM2_TPPlayerBtn.MouseButton1Click:Connect(function()
 end)
 
 _G.update()
+
+local P, R = game:GetService("Players"), game:GetService("RunService")
+local LP = P.LocalPlayer
+local c = Color3.fromRGB(60, 30, 95)
+
+-- 1. Создаем кнопку Auto Coins во вкладке MM2 (Выравниваем под TP Player)
+if _G.MM2_CoinFarmBtn then _G.MM2_CoinFarmBtn:Destroy() end
+_G.MM2_CoinFarmBtn = Instance.new("TextButton", _G.P_MM2)
+_G.MM2_CoinFarmBtn.Size, _G.MM2_CoinFarmBtn.Position, _G.MM2_CoinFarmBtn.BackgroundColor3 = UDim2.new(1, 0, 0, 40), UDim2.new(0, 0, 0, 200), c
+_G.MM2_CoinFarmBtn.Text, _G.MM2_CoinFarmBtn.Font, _G.MM2_CoinFarmBtn.TextSize, _G.MM2_CoinFarmBtn.TextColor3 = "Auto Coins: OFF", Enum.Font.SourceSans, 14, Color3.fromRGB(255, 255, 255)
+Instance.new("UICorner", _G.MM2_CoinFarmBtn).CornerRadius = UDim.new(0, 6)
+
+_G.mm2CoinsActive = false
+
+-- 2. Логика кнопки
+_G.MM2_CoinFarmBtn.MouseButton1Click:Connect(function()
+    if _G.running then
+        _G.mm2CoinsActive = not _G.mm2CoinsActive
+        _G.MM2_CoinFarmBtn.Text = _G.mm2CoinsActive and "Auto Coins: ON" or "Auto Coins: OFF"
+        _G.MM2_CoinFarmBtn.BackgroundColor3 = _G.mm2CoinsActive and Color3.fromRGB(186, 85, 211) or c
+    end
+end)
+
+-- 3. Функция поиска БЛИЖАЙШЕЙ монетки на карте
+local function getClosestCoin(root)
+    local closest, dist = nil, math.huge
+    for _, v in pairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and (v.Name == "Coin_Sub" or v.Name == "GoldCoin") then
+            local d = (root.Position - v.Position).Magnitude
+            if d < dist then closest, dist = v, d end
+        end
+    end
+    return closest
+end
+
+-- 4. Независимый поток плавного полета к монетам (0% лагов)
+task.spawn(function()
+    while true do
+        if not _G.running then break end
+        local char = LP.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        if _G.mm2CoinsActive and root and hum and hum.Health > 0 then
+            local coin = getClosestCoin(root)
+            if coin and coin.Parent then
+                -- Врубаем скрытый Noclip на время полета, чтобы проходить сквозь стены
+                for _, part in pairs(char:GetDescendants()) do
+                    if part:IsA("BasePart") then part.CanCollide = false end
+                end
+                
+                -- Плавно двигаем персонажа к монетке со средней беспалевной скоростью
+                local speed = 28 -- Оптимальная средняя скорость, чтобы античит не кикал
+                while _G.mm2CoinsActive and coin and coin.Parent and root and (root.Position - coin.Position).Magnitude > 1.5 do
+                    local dir = (coin.Position - root.Position).Unit
+                    root.Velocity = dir * speed
+                    root.CFrame = CFrame.new(root.Position, coin.Position) -- Разворачиваем перса к монетке
+                    R.RenderStepped:Wait()
+                end
+                root.Velocity = Vector3.new(0,0,0) -- Стоп после подбора
+            else
+                task.wait(0.5) -- Если монет нет, просто спим полсекунды
+            end
+        end
+        task.wait(0.1)
+    end
+end)
+
+-- Обновляем высоту фиолетового меню, чтобы кнопка влезла
+local old = _G.update
+_G.update = function()
+    old()
+    if _G.MM2_CoinFarmBtn then
+        _G.MM2_CoinFarmBtn.Position = UDim2.new(0, 0, 0, 200)
+        if _G.P_MM2.Visible then
+            _G.MF.Size = UDim2.new(0, 360, 0, 290) -- Растягиваем рамку пониже
+        end
+    end
+end; _G.update()
